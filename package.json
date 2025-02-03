@@ -46,5 +46,9 @@
     "jnu-abc": "^0.0.3",
     "sqlite3": "^5.1.7"
   },
+  "optionalDependencies": {
+    "@swc/core-darwin-arm64": "^1.3.99",
+    "@swc/core-win32-x64-msvc": "^1.3.99"
+  },
   "type": "module"
 }
