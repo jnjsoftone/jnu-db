@@ -1,0 +1,26 @@
+{
+  "relationships": [
+    {
+      "name": "user_posts",
+      "source_table": "users",
+      "target_table": "posts",
+      "type": "one-to-many",
+      "source_column": "id",
+      "target_column": "user_id",
+      "on_delete": "CASCADE",
+      "on_update": "CASCADE",
+      "description": "사용자와 게시글 간의 관계"
+    },
+    {
+      "name": "post_comments",
+      "source_table": "posts",
+      "target_table": "comments",
+      "type": "one-to-many",
+      "source_column": "id",
+      "target_column": "post_id",
+      "on_delete": "CASCADE",
+      "on_update": "CASCADE",
+      "description": "게시글과 댓글 간의 관계"
+    }
+  ]
+}

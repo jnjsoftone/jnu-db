@@ -1,0 +1,37 @@
+{
+  "validation_rules": {
+    "email": {
+      "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+      "description": "이메일 형식 검증",
+      "error_message": "올바른 이메일 형식이 아닙니다"
+    },
+    "password": {
+      "pattern": "^(?=.*[A-Za-z])(?=.*\\d)(?=.*[@$!%*#?&])[A-Za-z\\d@$!%*#?&]{8,}$",
+      "description": "비밀번호 형식 검증 (최소 8자, 문자/숫자/특수문자 포함)",
+      "error_message": "비밀번호는 최소 8자 이상이며, 문자, 숫자, 특수문자를 포함해야 합니다"
+    },
+    "phone": {
+      "pattern": "^\\d{2,3}-\\d{3,4}-\\d{4}$",
+      "description": "전화번호 형식 검증",
+      "error_message": "올바른 전화번호 형식이 아닙니다"
+    },
+    "url": {
+      "pattern": "^https?:\\/\\/(?:www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_\\+.~#?&\\/=]*)$",
+      "description": "URL 형식 검증",
+      "error_message": "올바른 URL 형식이 아닙니다"
+    }
+  },
+  "custom_rules": {
+    "age": {
+      "min": 0,
+      "max": 150,
+      "description": "나이 범위 검증",
+      "error_message": "나이는 0-150 사이의 값이어야 합니다"
+    },
+    "price": {
+      "min": 0,
+      "description": "가격 범위 검증",
+      "error_message": "가격은 0 이상이어야 합니다"
+    }
+  }
+}

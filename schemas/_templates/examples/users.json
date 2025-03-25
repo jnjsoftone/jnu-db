@@ -1,0 +1,59 @@
+{
+  "tables": {
+    "users": {
+      "description": "사용자 정보 테이블",
+      "metadata": {
+        "created_at": "2024-03-15",
+        "owner": "system_admin",
+        "version": "1.0"
+      },
+      "columns": {
+        "id": {
+          "type": "INT",
+          "constraints": {
+            "primary": true,
+            "auto_increment": true
+          },
+          "description": "사용자 고유 식별자",
+          "examples": [ 1, 2, 3 ]
+        },
+        "email": {
+          "type": "VARCHAR",
+          "length": 255,
+          "constraints": {
+            "unique": true,
+            "nullable": false
+          },
+          "validation": {
+            "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+          },
+          "description": "사용자 이메일",
+          "examples": [ "user@example.com" ]
+        },
+        "name": {
+          "type": "VARCHAR",
+          "length": 100,
+          "constraints": {
+            "nullable": true
+          },
+          "description": "사용자 이름",
+          "examples": [ "John Doe" ]
+        }
+      },
+      "indices": [
+        {
+          "name": "idx_email",
+          "columns": [ "email" ],
+          "type": "UNIQUE"
+        }
+      ],
+      "relationships": {
+        "posts": {
+          "type": "one-to-many",
+          "foreign_key": "user_id",
+          "description": "사용자가 작성한 게시글"
+        }
+      }
+    }
+  }
+}

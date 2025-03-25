@@ -1,0 +1,4 @@
+table_name,column_name,data_type,length,precision,scale,is_nullable,is_primary,is_unique,is_foreign,foreign_table,foreign_column,default_value,auto_increment,description,validation,example
+users,id,INT,,,0,false,true,true,false,,,null,true,사용자 고유 식별자,,1
+users,email,VARCHAR,255,,,false,false,true,false,,,null,false,사용자 이메일,email,user@example.com
+users,name,VARCHAR,100,,,true,false,false,false,,,null,false,사용자 이름,,John Doe 
