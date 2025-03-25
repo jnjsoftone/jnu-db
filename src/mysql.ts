@@ -28,6 +28,12 @@ interface TransactionQuery {
   params?: any[];
 }
 
+interface TransactionResult {
+  success: boolean;
+  data?: any[];
+  error?: Error;
+}
+
 const createPool = (config: MySqlConfig): Pool => {
   return mysql.createPool({
     host: config.host,
@@ -35,7 +41,9 @@ const createPool = (config: MySqlConfig): Pool => {
     password: config.password,
     database: config.database,
     port: config.port || 3306,
+    waitForConnections: true,
     connectionLimit: config.connectionLimit || 10,
+    queueLimit: 0,
   });
 };
 
@@ -63,42 +71,54 @@ const disconnect = async (connection: Connection): Promise<void> => {
   }
 };
 
-const executeQuery = async <T = any>(
-  connection: mysql.Connection,
-  query: string,
-  params?: any[]
-): Promise<QueryResult<T>> => {
+const executeQuery = async (connection: Connection, query: string, params: any[] = []): Promise<QueryResult> => {
   try {
-    const [rows] = await connection.execute(query, params);
+    const [result] = await connection.execute(query, params);
     return {
       success: true,
-      data: rows as T,
+      data: result,
+      error: undefined,
     };
   } catch (error) {
+    console.error('쿼리 실행 실패:', error);
     return {
       success: false,
-      error: error as Error,
+      data: undefined,
+      error:
+        error instanceof Error
+          ? error
+          : new Error(error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'),
     };
   }
 };
 
-const executeTransaction = async (connection: mysql.Connection, queries: TransactionQuery[]): Promise<QueryResult> => {
+const executeTransaction = async (connection: Connection, queries: TransactionQuery[]): Promise<TransactionResult> => {
   try {
+    // 트랜잭션 시작
     await connection.beginTransaction();
-    let affectedRows = 0;
 
-    for (const { query, params } of queries) {
-      const [result] = await connection.execute(query, params);
-      affectedRows += (result as any).affectedRows || 0;
+    const results: any[] = [];
+
+    try {
+      // 각 쿼리 실행
+      for (const query of queries) {
+        const [result] = await connection.execute(query.query, query.params || []);
+        results.push(result);
+      }
+
+      // 모든 쿼리가 성공하면 커밋
+      await connection.commit();
+
+      return {
+        success: true,
+        data: results,
+      };
+    } catch (error) {
+      // 오류 발생 시 롤백
+      await connection.rollback();
+      throw error;
     }
-
-    await connection.commit();
-    return {
-      success: true,
-      data: { affectedRows },
-    };
   } catch (error) {
-    await connection.rollback();
     return {
       success: false,
       error: error as Error,
@@ -106,7 +126,7 @@ const executeTransaction = async (connection: mysql.Connection, queries: Transac
   }
 };
 
-const backup = async (connection: mysql.Connection, backupPath: string): Promise<QueryResult> => {
+const backup = async (connection: Connection, backupPath: string): Promise<QueryResult> => {
   try {
     // 백업 디렉토리 생성
     const backupDir = path.dirname(backupPath);
@@ -140,7 +160,7 @@ const backup = async (connection: mysql.Connection, backupPath: string): Promise
   }
 };
 
-const restore = async (connection: mysql.Connection, backupPath: string): Promise<QueryResult> => {
+const restore = async (connection: Connection, backupPath: string): Promise<QueryResult> => {
   try {
     // 백업 파일이 존재하는지 확인
     if (!fs.existsSync(backupPath)) {
@@ -188,4 +208,4 @@ const restore = async (connection: mysql.Connection, backupPath: string): Promis
   }
 };
 
-export { executeQuery, executeTransaction, backup, restore };
+export { createPool, executeQuery, executeTransaction, backup, restore };

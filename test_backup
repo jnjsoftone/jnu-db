@@ -1,0 +1,16 @@
+{
+  "mysql_test_table": [
+    {
+      "id": 1,
+      "name": "사용자1"
+    },
+    {
+      "id": 2,
+      "name": "사용자2"
+    }
+  ],
+  "test_categories": [],
+  "test_post_tags": [],
+  "test_posts": [],
+  "test_tags": []
+}

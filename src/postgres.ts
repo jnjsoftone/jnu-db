@@ -13,6 +13,7 @@ interface PostgresConfig {
 
 interface QueryResult<T = any> {
   success: boolean;
+  rows?: T[];
   data?: T;
   error?: Error;
 }
@@ -22,38 +23,68 @@ interface TransactionQuery {
   params?: any[];
 }
 
-const executeQuery = async <T = any>(connection: Client, query: string, params?: any[]): Promise<QueryResult<T>> => {
+interface BackupResult {
+  success: boolean;
+  tables?: string[];
+  error?: Error;
+}
+
+interface TransactionResult {
+  success: boolean;
+  data?: any[];
+  error?: Error;
+}
+
+const executeQuery = async (connection: any, query: string, params: any[] = []): Promise<QueryResult> => {
   try {
     const result = await connection.query(query, params);
     return {
       success: true,
-      data: result.rows as T,
+      rows: result.rows,
+      data: result.rows,
+      error: undefined,
     };
   } catch (error) {
+    console.error('쿼리 실행 실패:', error);
     return {
       success: false,
-      error: error as Error,
+      rows: undefined,
+      data: undefined,
+      error:
+        error instanceof Error
+          ? error
+          : new Error(error instanceof Error ? error.message : '알 수 없는 오류가 발생했습니다.'),
     };
   }
 };
 
-const executeTransaction = async (connection: Client, queries: TransactionQuery[]): Promise<QueryResult> => {
+const executeTransaction = async (connection: any, queries: TransactionQuery[]): Promise<TransactionResult> => {
   try {
+    // 트랜잭션 시작
     await connection.query('BEGIN');
-    let affectedRows = 0;
 
-    for (const { query, params } of queries) {
-      const result = await connection.query(query, params);
-      affectedRows += result.rowCount || 0;
+    const results: any[] = [];
+
+    try {
+      // 각 쿼리 실행
+      for (const query of queries) {
+        const result = await connection.query(query.query, query.params || []);
+        results.push(result.rows);
+      }
+
+      // 모든 쿼리가 성공하면 커밋
+      await connection.query('COMMIT');
+
+      return {
+        success: true,
+        data: results,
+      };
+    } catch (error) {
+      // 오류 발생 시 롤백
+      await connection.query('ROLLBACK');
+      throw error;
     }
-
-    await connection.query('COMMIT');
-    return {
-      success: true,
-      data: { affectedRows },
-    };
   } catch (error) {
-    await connection.query('ROLLBACK');
     return {
       success: false,
       error: error as Error,
@@ -61,33 +92,30 @@ const executeTransaction = async (connection: Client, queries: TransactionQuery[
   }
 };
 
-const backup = async (connection: Client, backupPath: string): Promise<QueryResult> => {
+const backup = async (connection: Client, backupPath: string): Promise<BackupResult> => {
   try {
-    // 백업 디렉토리 생성
-    const backupDir = path.dirname(backupPath);
-    if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
+    // 테이블이 존재하는지 확인
+    const { rows } = await connection.query(
+      "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+    );
+
+    if (rows.length === 0) {
+      throw new Error('백업할 테이블이 없습니다.');
     }
 
-    // 테이블 목록 조회
-    const { rows: tables } = await connection.query(`
-      SELECT table_name 
-      FROM information_schema.tables 
-      WHERE table_schema = 'public'
-    `);
-    const backupData: Record<string, any[]> = {};
-
-    // 각 테이블의 데이터 백업
-    for (const { table_name } of tables) {
-      const { rows } = await connection.query(`SELECT * FROM ${table_name}`);
-      backupData[table_name] = rows;
+    // 테이블 데이터 가져오기
+    const tables: Record<string, any[]> = {};
+    for (const { table_name } of rows) {
+      const { rows: tableData } = await connection.query(`SELECT * FROM ${table_name}`);
+      tables[table_name] = tableData;
     }
 
     // JSON 파일로 저장
-    fs.writeFileSync(backupPath, JSON.stringify(backupData, null, 2));
+    await fs.promises.writeFile(backupPath, JSON.stringify(tables, null, 2));
 
     return {
       success: true,
+      tables: Object.keys(tables),
     };
   } catch (error) {
     console.error('백업 실행 중 오류:', error);
