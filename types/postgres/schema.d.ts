@@ -1,6 +1,7 @@
+import { Pool } from 'pg';
 import { TableSchema, DbConfig } from '../types';
 export declare class PostgresSchemaManager {
-    private pool;
+    pool: Pool;
     private config;
     constructor(config: DbConfig);
     close(): Promise<void>;
@@ -11,6 +12,5 @@ export declare class PostgresSchemaManager {
     private generateColumnSQL;
     private generateForeignKeySQL;
     private getDataTypeSQL;
-    private mapColumnToSchema;
 }
 //# sourceMappingURL=schema.d.ts.map
