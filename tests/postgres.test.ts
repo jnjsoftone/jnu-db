@@ -1,10 +1,10 @@
 import { describe, expect, test, beforeAll, afterAll, beforeEach, afterEach } from '@jest/globals';
-import { Client, QueryResult } from 'pg';
+import { Client } from 'pg';
 import { executeQuery, executeTransaction, backup, restore } from '../src/postgres';
 import mysql from 'mysql2/promise';
 
 describe('PostgreSQL 유틸리티 테스트', () => {
-  let client: Client;
+  let client: typeof Client;
   let connection: any;
 
   beforeAll(async () => {

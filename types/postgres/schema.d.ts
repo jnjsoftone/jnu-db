@@ -5,6 +5,10 @@ export declare class PostgresSchemaManager {
     private config;
     constructor(config: DbConfig);
     close(): Promise<void>;
+    findTables(keyword?: string): Promise<string[]>;
+    removeTables(keyword?: string): Promise<{
+        [key: string]: boolean;
+    }>;
     createTable(schema: TableSchema[]): Promise<boolean>;
     extractSchema(tableName: string): Promise<TableSchema[]>;
     private groupByTableName;
