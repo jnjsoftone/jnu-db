@@ -1,3 +1,4 @@
+// PostgreSQL 스키마 관리자
 import { Pool } from 'pg';
 import { TableSchema, DbConfig } from '../types';
 
