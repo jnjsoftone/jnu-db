@@ -3,16 +3,16 @@ function e(e,n,a){return n in e?Object.defineProperty(e,n,{value:a,enumerable:!0
           COLUMN_NAME as column_name,
           DATA_TYPE as data_type,
           CHARACTER_MAXIMUM_LENGTH as length,
-          NUMERIC_PRECISION as precision,
-          NUMERIC_SCALE as scale,
-          IS_NULLABLE = 'YES' as is_nullable,
-          COLUMN_KEY = 'PRI' as is_primary,
-          COLUMN_KEY = 'UNI' as is_unique,
-          COLUMN_KEY = 'MUL' as is_foreign,
+          NUMERIC_PRECISION as \`precision\`,
+          NUMERIC_SCALE as \`scale\`,
+          CASE WHEN IS_NULLABLE = 'YES' THEN 1 ELSE 0 END as is_nullable,
+          CASE WHEN COLUMN_KEY = 'PRI' THEN 1 ELSE 0 END as is_primary,
+          CASE WHEN COLUMN_KEY = 'UNI' THEN 1 ELSE 0 END as is_unique,
+          CASE WHEN COLUMN_KEY = 'MUL' THEN 1 ELSE 0 END as is_foreign,
           NULL as foreign_table,
           NULL as foreign_column,
           COLUMN_DEFAULT as default_value,
-          EXTRA = 'auto_increment' as auto_increment,
+          CASE WHEN EXTRA = 'auto_increment' THEN 1 ELSE 0 END as auto_increment,
           COLUMN_COMMENT as description
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
@@ -24,7 +24,7 @@ function e(e,n,a){return n in e?Object.defineProperty(e,n,{value:a,enumerable:!0
         FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? 
           AND REFERENCED_TABLE_NAME IS NOT NULL
-      `,[this.config.database,e]);return(Array.isArray(n)?n.map(e=>{let n=Array.isArray(a)?a.find(n=>n.column_name===e.column_name):null;return{...e,foreign_table:n?n.foreign_table:null,foreign_column:n?n.foreign_column:null,is_foreign:!!n}}):[]).map(this.mapColumnToSchema)}catch(e){return console.error("MySQL 스키마 추출 중 오류:",e),[]}}groupByTableName(e){return e.reduce((e,n)=>{let{table_name:a}=n;return e[a]||(e[a]=[]),e[a].push(n),e},{})}generateCreateTableSQL(e,n){let a=n.map(e=>this.generateColumnSQL(e)),i=n.filter(e=>e.is_primary).map(e=>e.column_name),t=n.filter(e=>e.is_foreign&&e.foreign_table&&e.foreign_column).map(e=>this.generateForeignKeySQL(e));return`
+      `,[this.config.database,e]);return(Array.isArray(n)?n.map(n=>{let i=Array.isArray(a)?a.find(e=>e.column_name===n.column_name):null;return{...n,table_name:e,foreign_table:i?i.foreign_table:null,foreign_column:i?i.foreign_column:null,is_foreign:!!i}}):[]).map(this.mapColumnToSchema)}catch(e){return console.error("MySQL 스키마 추출 중 오류:",e),[]}}groupByTableName(e){return e.reduce((e,n)=>{let{table_name:a}=n;return e[a]||(e[a]=[]),e[a].push(n),e},{})}generateCreateTableSQL(e,n){let a=n.map(e=>this.generateColumnSQL(e)),i=n.filter(e=>e.is_primary).map(e=>e.column_name),t=n.filter(e=>e.is_foreign&&e.foreign_table&&e.foreign_column).map(e=>this.generateForeignKeySQL(e));return`
       CREATE TABLE ${e} (
         ${a.join(",\n        ")}
         ${i.length>0?`,
