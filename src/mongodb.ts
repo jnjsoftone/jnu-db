@@ -1,4 +1,4 @@
-import { MongoClient, Db, Collection, Document } from 'mongodb';
+import { MongoClient, Db, Collection, Document, OptionalUnlessRequiredId, Filter, WithId } from 'mongodb';
 import { saveJson, loadJson } from 'jnu-abc';
 
 interface MongoConfig {
@@ -35,13 +35,13 @@ const disconnect = async (client: MongoClient): Promise<void> => {
 const executeQuery = async <T extends Document>(
   db: Db,
   collectionName: string,
-  query: Document,
+  query: Filter<T>,
   options: any = {}
 ): Promise<QueryResult<T[]>> => {
   try {
     const collection = db.collection<T>(collectionName);
     const result = await collection.find(query, options).toArray();
-    return { success: true, data: result };
+    return { success: true, data: result as T[] };
   } catch (error) {
     return { success: false, error: error instanceof Error ? error.message : '알 수 없는 오류' };
   }
@@ -49,6 +49,7 @@ const executeQuery = async <T extends Document>(
 
 const executeTransaction = async <T extends Document>(
   db: Db,
+  client: MongoClient,
   operations: {
     collection: string;
     operation: 'insert' | 'update' | 'delete';
@@ -56,10 +57,10 @@ const executeTransaction = async <T extends Document>(
     update?: Document;
     options?: any;
   }[]
-): Promise<QueryResult<T[]>> => {
+): Promise<QueryResult<any[]>> => {
   const session = client.startSession();
   try {
-    const results: T[] = [];
+    const results: any[] = [];
     await session.withTransaction(async () => {
       for (const op of operations) {
         const collection = db.collection<T>(op.collection);
@@ -67,18 +68,18 @@ const executeTransaction = async <T extends Document>(
 
         switch (op.operation) {
           case 'insert':
-            result = await collection.insertOne(op.query, { session });
+            result = await collection.insertOne(op.query as OptionalUnlessRequiredId<T>, { session });
             break;
           case 'update':
-            result = await collection.updateOne(op.query, op.update!, { session });
+            result = await collection.updateOne(op.query as Filter<T>, op.update!, { session });
             break;
           case 'delete':
-            result = await collection.deleteOne(op.query, { session });
+            result = await collection.deleteOne(op.query as Filter<T>, { session });
             break;
         }
 
         if (result) {
-          results.push(result as unknown as T);
+          results.push(result);
         }
       }
     });
@@ -108,7 +109,7 @@ const backup = async (db: Db, backupPath: string): Promise<QueryResult<void>> =>
   }
 };
 
-const restore = async (db: Db, backupPath: string): Promise<QueryResult<void>> => {
+const restore = async (db: Db, client: MongoClient, backupPath: string): Promise<QueryResult<void>> => {
   const session = client.startSession();
   try {
     const backupData = await loadJson(backupPath);

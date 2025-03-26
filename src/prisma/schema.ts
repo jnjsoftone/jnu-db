@@ -97,7 +97,7 @@ generator client {
 
   private generateFieldDefinition(column: TableSchema): string {
     const typeName = this.mapSQLTypeToPrisma(column.data_type, column.length);
-    const modifiers = [];
+    const modifiers: string[] = [];
 
     if (!column.is_nullable) {
       modifiers.push('');
