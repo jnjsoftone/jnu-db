@@ -39,72 +39,77 @@ export class PostgresSchemaManager {
     try {
       const result = await this.pool.query(
         `
-        SELECT 
+        WITH
+        pks AS (
+          SELECT a.attname
+          FROM pg_index i
+          JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+          WHERE i.indrelid = $1::regclass AND i.indisprimary
+        ),
+        fks AS (
+          SELECT
+            kcu.column_name,
+            ccu.table_name AS foreign_table,
+            ccu.column_name AS foreign_column
+          FROM information_schema.table_constraints AS tc
+          JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
+          JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
+          WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = $1
+        ),
+        uks AS (
+          SELECT ic.column_name
+          FROM information_schema.table_constraints tc
+          JOIN information_schema.constraint_column_usage AS ic ON tc.constraint_name = ic.constraint_name
+          WHERE tc.constraint_type = 'UNIQUE' AND tc.table_name = $1
+        )
+        SELECT
           c.column_name,
           c.data_type,
-          c.character_maximum_length as length,
-          c.numeric_precision as precision,
-          c.numeric_scale as scale,
-          c.is_nullable = 'YES' as is_nullable,
-          (
-            SELECT true FROM pg_constraint pc
-            JOIN pg_class cl ON cl.oid = pc.conrelid
-            JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum = ANY(pc.conkey)
-            WHERE pc.contype = 'p' AND cl.relname = $1 AND a.attname = c.column_name
-          ) as is_primary,
-          (
-            SELECT true FROM pg_constraint pc
-            JOIN pg_class cl ON cl.oid = pc.conrelid
-            JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum = ANY(pc.conkey)
-            WHERE pc.contype = 'u' AND cl.relname = $1 AND a.attname = c.column_name
-          ) as is_unique,
-          (
-            SELECT true FROM pg_constraint pc
-            JOIN pg_class cl ON cl.oid = pc.conrelid
-            JOIN pg_attribute a ON a.attrelid = cl.oid AND a.attnum = ANY(pc.conkey)
-            WHERE pc.contype = 'f' AND cl.relname = $1 AND a.attname = c.column_name
-          ) as is_foreign,
-          (
-            SELECT ccu.table_name FROM information_schema.constraint_column_usage ccu
-            JOIN information_schema.referential_constraints rc 
-              ON rc.constraint_name = ccu.constraint_name
-            JOIN information_schema.key_column_usage kcu 
-              ON kcu.constraint_name = rc.constraint_name
-            WHERE kcu.table_name = $1 AND kcu.column_name = c.column_name
-            LIMIT 1
-          ) as foreign_table,
-          (
-            SELECT ccu.column_name FROM information_schema.constraint_column_usage ccu
-            JOIN information_schema.referential_constraints rc 
-              ON rc.constraint_name = ccu.constraint_name
-            JOIN information_schema.key_column_usage kcu 
-              ON kcu.constraint_name = rc.constraint_name
-            WHERE kcu.table_name = $1 AND kcu.column_name = c.column_name
-            LIMIT 1
-          ) as foreign_column,
-          c.column_default as default_value,
-          (
-            SELECT EXISTS(
-              SELECT 1 FROM pg_attrdef ad
-              JOIN pg_class cl ON cl.oid = ad.adrelid
-              WHERE cl.relname = $1 AND ad.adnum = c.ordinal_position AND ad.adsrc LIKE 'nextval%'
-            )
-          ) as auto_increment,
-          (
-            SELECT pd.description 
-            FROM pg_description pd
-            JOIN pg_class pc ON pd.objoid = pc.oid
-            JOIN pg_attribute pa ON pa.attrelid = pc.oid AND pd.objsubid = pa.attnum
-            WHERE pc.relname = $1 AND pa.attname = c.column_name
-          ) as description
+          c.character_maximum_length AS length,
+          c.numeric_precision AS "precision",
+          c.numeric_scale AS scale,
+          CASE WHEN c.is_nullable = 'YES' THEN true ELSE false END AS is_nullable,
+          CASE WHEN pk.attname IS NOT NULL THEN true ELSE false END AS is_primary,
+          CASE WHEN uk.column_name IS NOT NULL THEN true ELSE false END AS is_unique,
+          CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END AS is_foreign,
+          fk.foreign_table,
+          fk.foreign_column,
+          c.column_default AS default_value,
+          CASE 
+            WHEN c.column_default LIKE '%nextval%' THEN true 
+            WHEN c.column_default LIKE '%identity%' THEN true
+            ELSE false 
+          END AS auto_increment,
+          pgd.description
         FROM information_schema.columns c
-        WHERE c.table_name = $1 AND c.table_schema = 'public'
-        ORDER BY c.ordinal_position
+        LEFT JOIN pks pk ON pk.attname = c.column_name
+        LEFT JOIN fks fk ON fk.column_name = c.column_name
+        LEFT JOIN uks uk ON uk.column_name = c.column_name
+        LEFT JOIN pg_catalog.pg_statio_all_tables AS st ON st.relname = c.table_name
+        LEFT JOIN pg_catalog.pg_description pgd ON pgd.objoid = st.relid
+          AND pgd.objsubid = c.ordinal_position
+        WHERE c.table_name = $1
       `,
         [tableName]
       );
 
-      return result.rows.map(this.mapColumnToSchema);
+      return result.rows.map((row) => ({
+        table_name: tableName,
+        column_name: row.column_name,
+        data_type: row.data_type,
+        length: row.length || undefined,
+        precision: row.precision || undefined,
+        scale: row.scale || undefined,
+        is_nullable: row.is_nullable,
+        is_primary: row.is_primary,
+        is_unique: row.is_unique,
+        is_foreign: row.is_foreign,
+        foreign_table: row.foreign_table || undefined,
+        foreign_column: row.foreign_column || undefined,
+        default_value: row.default_value || undefined,
+        auto_increment: row.auto_increment,
+        description: row.description || '',
+      }));
     } catch (error) {
       console.error('PostgreSQL 스키마 추출 중 오류:', error);
       return [];

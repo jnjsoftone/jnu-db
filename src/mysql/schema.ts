@@ -50,16 +50,16 @@ export class MySqlSchemaManager {
           COLUMN_NAME as column_name,
           DATA_TYPE as data_type,
           CHARACTER_MAXIMUM_LENGTH as length,
-          NUMERIC_PRECISION as precision,
-          NUMERIC_SCALE as scale,
-          IS_NULLABLE = 'YES' as is_nullable,
-          COLUMN_KEY = 'PRI' as is_primary,
-          COLUMN_KEY = 'UNI' as is_unique,
-          COLUMN_KEY = 'MUL' as is_foreign,
+          NUMERIC_PRECISION as \`precision\`,
+          NUMERIC_SCALE as \`scale\`,
+          CASE WHEN IS_NULLABLE = 'YES' THEN 1 ELSE 0 END as is_nullable,
+          CASE WHEN COLUMN_KEY = 'PRI' THEN 1 ELSE 0 END as is_primary,
+          CASE WHEN COLUMN_KEY = 'UNI' THEN 1 ELSE 0 END as is_unique,
+          CASE WHEN COLUMN_KEY = 'MUL' THEN 1 ELSE 0 END as is_foreign,
           NULL as foreign_table,
           NULL as foreign_column,
           COLUMN_DEFAULT as default_value,
-          EXTRA = 'auto_increment' as auto_increment,
+          CASE WHEN EXTRA = 'auto_increment' THEN 1 ELSE 0 END as auto_increment,
           COLUMN_COMMENT as description
         FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
@@ -87,8 +87,10 @@ export class MySqlSchemaManager {
             const fk = Array.isArray(foreignKeys)
               ? (foreignKeys as any[]).find((fk) => fk.column_name === col.column_name)
               : null;
+
             return {
               ...col,
+              table_name: tableName, // 테이블 이름 명시적 추가
               foreign_table: fk ? fk.foreign_table : null,
               foreign_column: fk ? fk.foreign_column : null,
               is_foreign: !!fk,

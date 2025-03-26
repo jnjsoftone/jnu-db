@@ -40,47 +40,49 @@ export class SqliteSchemaManager {
 
   async extractSchema(tableName: string): Promise<TableSchema[]> {
     try {
-      // 테이블 정보 가져오기
-      const pragma = await this.db.all(`PRAGMA table_info(${tableName})`);
+      // PRAGMA table_info를 통해 테이블 구조 가져오기
+      const tableInfo = await this.db.all(`PRAGMA table_info(${tableName})`);
 
       // 외래 키 정보 가져오기
       const foreignKeys = await this.db.all(`PRAGMA foreign_key_list(${tableName})`);
 
-      // 테이블 인덱스 정보 가져오기 (유니크 제약 조건 확인)
-      const indexes = await this.db.all(`PRAGMA index_list(${tableName})`);
+      // 인덱스 정보 가져오기 (유니크 제약조건 확인용)
+      const indexList = await this.db.all(`PRAGMA index_list(${tableName})`);
 
-      // 유니크 인덱스의 컬럼 정보 가져오기
+      // 유니크 인덱스에 포함된 컬럼 정보 추출
       const uniqueColumns: string[] = [];
-      for (const index of indexes) {
-        if (index.unique === 1) {
-          const indexInfo = await this.db.all(`PRAGMA index_info(${index.name})`);
-          for (const info of indexInfo) {
-            uniqueColumns.push(info.name);
-          }
+      for (const idx of indexList) {
+        if (idx.unique === 1) {
+          const indexInfo = await this.db.all(`PRAGMA index_info(${idx.name})`);
+          indexInfo.forEach((info) => uniqueColumns.push(info.name));
         }
       }
 
-      return Promise.all(
-        pragma.map(async (col) => {
-          // 현재 컬럼이 포함된 외래 키 찾기
-          const fk = foreignKeys.find((fk) => fk.from === col.name);
+      // 테이블 정보 변환
+      const result = tableInfo.map((col: any) => {
+        // 외래 키 정보 찾기
+        const fk = foreignKeys.find((fk: any) => fk.from === col.name);
 
-          return {
-            table_name: tableName,
-            column_name: col.name,
-            data_type: col.type,
-            is_nullable: col.notnull === 0,
-            is_primary: col.pk === 1,
-            is_unique: uniqueColumns.includes(col.name) || col.pk === 1,
-            is_foreign: !!fk,
-            foreign_table: fk ? fk.table : undefined,
-            foreign_column: fk ? fk.to : undefined,
-            default_value: col.dflt_value,
-            auto_increment: col.pk === 1 && col.type.toUpperCase() === 'INTEGER', // SQLite에서는 INTEGER PRIMARY KEY가 자동 증가
-            description: '', // SQLite는 컬럼 설명을 저장하지 않음
-          };
-        })
-      );
+        // INTEGER PRIMARY KEY는 SQLite에서 자동 증가 컬럼
+        const isAutoIncrement = col.pk === 1 && col.type.toUpperCase() === 'INTEGER';
+
+        return {
+          table_name: tableName,
+          column_name: col.name,
+          data_type: col.type,
+          is_nullable: col.notnull === 0,
+          is_primary: col.pk === 1,
+          is_unique: uniqueColumns.includes(col.name) || col.pk === 1,
+          is_foreign: !!fk,
+          foreign_table: fk ? fk.table : undefined,
+          foreign_column: fk ? fk.to : undefined,
+          default_value: col.dflt_value,
+          auto_increment: isAutoIncrement,
+          description: '', // SQLite에는 컬럼 설명 정보 저장하는 기능이 제한적
+        };
+      });
+
+      return result;
     } catch (error) {
       console.error('SQLite 스키마 추출 중 오류:', error);
       return [];
