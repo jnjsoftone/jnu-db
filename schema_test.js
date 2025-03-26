@@ -1,4 +1,3 @@
-// jnu-db의 MySQL 및 PostgreSQL 스키마 관리자 사용 예제
 const dotenv = require('dotenv');
 const path = require('path');
 const { MySqlSchemaManager, PostgresSchemaManager } = require('jnu-db');
@@ -70,7 +69,9 @@ async function getAllMySqlSchemas() {
 async function createMySqlTableCopies() {
   try {
     // 모든 스키마 추출
+    console.log('MySQL 테이블 스키마 추출 시작...');
     const schemas = await getAllMySqlSchemas();
+    console.log('MySQL 테이블 스키마 추출 완료. 복사본 생성 시작...');
 
     // MySQL 설정 가져오기
     const mysqlConfig = {
@@ -81,43 +82,56 @@ async function createMySqlTableCopies() {
       database: process.env.MYSQL_DATABASE || 'test_db',
     };
 
+    console.log('MySQL 복사본 설정:', {
+      host: mysqlConfig.host,
+      port: mysqlConfig.port,
+      user: mysqlConfig.user,
+      database: mysqlConfig.database,
+    });
+
     // MySqlSchemaManager 인스턴스 생성
     const schemaManager = new MySqlSchemaManager(mysqlConfig);
     await schemaManager.init();
 
     // 각 테이블에 대해 복사본 생성
     const results = {};
+    console.log(`복사할 테이블 수: ${Object.keys(schemas).length}`);
+
     for (const tableName in schemas) {
       const schema = schemas[tableName];
       const copyTableName = `${tableName}_copy`;
 
-      console.log(`테이블 복사본 생성 중: ${copyTableName}`);
+      console.log(`\n테이블 복사본 생성 중: ${copyTableName}`);
 
       try {
         // 기존 테이블이 있으면 삭제
         try {
+          console.log(`- 기존 테이블 삭제 시도: ${copyTableName}`);
           await schemaManager.connection.execute(`DROP TABLE IF EXISTS ${copyTableName}`);
-          console.log(`기존 테이블 삭제됨: ${copyTableName}`);
+          console.log(`- 기존 테이블 삭제됨: ${copyTableName}`);
         } catch (dropErr) {
-          console.error(`테이블 삭제 중 오류: ${copyTableName}`, dropErr);
+          console.error(`- 테이블 삭제 중 오류: ${copyTableName}`, dropErr);
         }
 
         // 스키마를 복사본 테이블명으로 수정
+        console.log(`- 스키마 수정 중...`);
         const modifiedSchema = schema.map((column) => ({
           ...column,
           table_name: copyTableName,
         }));
 
         // 새 테이블 생성
+        console.log(`- 테이블 생성 시작: ${copyTableName}`);
         await schemaManager.createTable(modifiedSchema);
+        console.log(`- 테이블 구조 생성 완료: ${copyTableName}`);
 
         // 원본 테이블에서 데이터 복사 (필요시)
         // await schemaManager.connection.execute(`INSERT INTO ${copyTableName} SELECT * FROM ${tableName}`);
 
-        console.log(`테이블 복사본 생성 완료: ${copyTableName}`);
+        console.log(`- 테이블 복사본 생성 완료: ${copyTableName}`);
         results[copyTableName] = '성공';
       } catch (err) {
-        console.error(`테이블 복사본 생성 중 오류: ${copyTableName}`, err);
+        console.error(`- 테이블 복사본 생성 중 오류: ${copyTableName}`, err);
         results[copyTableName] = `실패: ${err.message}`;
       }
     }
@@ -195,7 +209,9 @@ async function getAllPostgresSchemas() {
 async function createPostgresTableCopies() {
   try {
     // 모든 스키마 추출
+    console.log('PostgreSQL 테이블 스키마 추출 시작...');
     const schemas = await getAllPostgresSchemas();
+    console.log('PostgreSQL 테이블 스키마 추출 완료. 복사본 생성 시작...');
 
     // PostgreSQL 설정 가져오기 (하드코딩)
     const pgConfig = {
@@ -206,42 +222,55 @@ async function createPostgresTableCopies() {
       database: 'test_db', // 하드코딩된 데이터베이스
     };
 
+    console.log('PostgreSQL 복사본 설정:', {
+      host: pgConfig.host,
+      port: pgConfig.port,
+      user: pgConfig.user,
+      database: pgConfig.database,
+    });
+
     // PostgresSchemaManager 인스턴스 생성
     const schemaManager = new PostgresSchemaManager(pgConfig);
 
     // 각 테이블에 대해 복사본 생성
     const results = {};
+    console.log(`복사할 테이블 수: ${Object.keys(schemas).length}`);
+
     for (const tableName in schemas) {
       const schema = schemas[tableName];
       const copyTableName = `${tableName}_copy`;
 
-      console.log(`PostgreSQL 테이블 복사본 생성 중: ${copyTableName}`);
+      console.log(`\nPostgreSQL 테이블 복사본 생성 중: ${copyTableName}`);
 
       try {
         // 기존 테이블이 있으면 삭제
         try {
+          console.log(`- 기존 PostgreSQL 테이블 삭제 시도: ${copyTableName}`);
           await schemaManager.pool.query(`DROP TABLE IF EXISTS ${copyTableName} CASCADE`);
-          console.log(`기존 PostgreSQL 테이블 삭제됨: ${copyTableName}`);
+          console.log(`- 기존 PostgreSQL 테이블 삭제됨: ${copyTableName}`);
         } catch (dropErr) {
-          console.error(`PostgreSQL 테이블 삭제 중 오류: ${copyTableName}`, dropErr);
+          console.error(`- PostgreSQL 테이블 삭제 중 오류: ${copyTableName}`, dropErr);
         }
 
         // 스키마를 복사본 테이블명으로 수정
+        console.log(`- PostgreSQL 스키마 수정 중...`);
         const modifiedSchema = schema.map((column) => ({
           ...column,
           table_name: copyTableName,
         }));
 
         // 새 테이블 생성
+        console.log(`- PostgreSQL 테이블 생성 시작: ${copyTableName}`);
         await schemaManager.createTable(modifiedSchema);
+        console.log(`- PostgreSQL 테이블 구조 생성 완료: ${copyTableName}`);
 
         // 원본 테이블에서 데이터 복사 (필요시)
         // await schemaManager.pool.query(`INSERT INTO ${copyTableName} SELECT * FROM ${tableName}`);
 
-        console.log(`PostgreSQL 테이블 복사본 생성 완료: ${copyTableName}`);
+        console.log(`- PostgreSQL 테이블 복사본 생성 완료: ${copyTableName}`);
         results[copyTableName] = '성공';
       } catch (err) {
-        console.error(`PostgreSQL 테이블 복사본 생성 중 오류: ${copyTableName}`, err);
+        console.error(`- PostgreSQL 테이블 복사본 생성 중 오류: ${copyTableName}`, err);
         results[copyTableName] = `실패: ${err.message}`;
       }
     }

@@ -1,4 +1,3 @@
-// PostgreSQL 스키마 관리자
 import { Pool } from 'pg';
 import { TableSchema, DbConfig } from '../types';
 
@@ -19,6 +18,59 @@ export class PostgresSchemaManager {
 
   async close(): Promise<void> {
     await this.pool.end();
+  }
+
+  // 테이블 목록 조회 함수
+  async findTables(keyword?: string): Promise<string[]> {
+    try {
+      let query = `
+        SELECT table_name 
+        FROM information_schema.tables 
+        WHERE table_schema = 'public'
+      `;
+
+      const params: any[] = [];
+
+      // 키워드가 있으면 검색 조건 추가
+      if (keyword) {
+        query += ` AND table_name ~ $1`;
+        params.push(keyword);
+      }
+
+      const result = await this.pool.query(query, params);
+
+      // 결과를 문자열 배열로 변환
+      return result.rows.map((row) => row.table_name);
+    } catch (error) {
+      console.error('PostgreSQL 테이블 목록 조회 중 오류:', error);
+      return [];
+    }
+  }
+
+  // 테이블 삭제 함수
+  async removeTables(keyword?: string): Promise<{ [key: string]: boolean }> {
+    try {
+      // 삭제할 테이블 목록 조회
+      const tables = await this.findTables(keyword);
+      const results: { [key: string]: boolean } = {};
+
+      // 각 테이블 삭제 (CASCADE 옵션을 사용하여 의존성 문제 해결)
+      for (const table of tables) {
+        try {
+          await this.pool.query(`DROP TABLE IF EXISTS "${table}" CASCADE`);
+          results[table] = true;
+          console.log(`PostgreSQL 테이블 삭제 성공: ${table}`);
+        } catch (err) {
+          console.error(`PostgreSQL 테이블 삭제 실패: ${table}`, err);
+          results[table] = false;
+        }
+      }
+
+      return results;
+    } catch (error) {
+      console.error('PostgreSQL 테이블 삭제 중 오류:', error);
+      throw error;
+    }
   }
 
   async createTable(schema: TableSchema[]): Promise<boolean> {

@@ -3,7 +3,7 @@ import { open } from 'sqlite';
 import { TableSchema } from '../types';
 
 export class SqliteSchemaManager {
-  private db: any; // sqlite.Database
+  public db: any; // sqlite.Database
   private filePath: string;
 
   constructor(filePath: string) {
@@ -20,6 +20,71 @@ export class SqliteSchemaManager {
   async close(): Promise<void> {
     if (this.db) {
       await this.db.close();
+    }
+  }
+
+  // 테이블 목록 조회 함수
+  async findTables(keyword?: string): Promise<string[]> {
+    try {
+      // SQLite에서 모든 테이블 목록 조회
+      const query = `
+        SELECT name FROM sqlite_master 
+        WHERE type='table' AND name NOT LIKE 'sqlite_%'
+      `;
+
+      const tables = await this.db.all(query);
+
+      // 키워드가 있으면 정규식으로 필터링
+      if (keyword) {
+        const regex = new RegExp(keyword);
+        return tables.filter((table: any) => regex.test(table.name)).map((table: any) => table.name);
+      }
+
+      // 결과를 문자열 배열로 변환
+      return tables.map((table: any) => table.name);
+    } catch (error) {
+      console.error('SQLite 테이블 목록 조회 중 오류:', error);
+      return [];
+    }
+  }
+
+  // 테이블 삭제 함수
+  async removeTables(keyword?: string): Promise<{ [key: string]: boolean }> {
+    try {
+      // 삭제할 테이블 목록 조회
+      const tables = await this.findTables(keyword);
+      const results: { [key: string]: boolean } = {};
+
+      // 외래 키 제약 조건 활성화 여부 확인
+      const foreignKeysPragma = await this.db.get('PRAGMA foreign_keys');
+      const foreignKeysEnabled = foreignKeysPragma && foreignKeysPragma.foreign_keys === 1;
+
+      // 필요시 외래 키 제약 조건 비활성화
+      if (foreignKeysEnabled) {
+        await this.db.exec('PRAGMA foreign_keys = OFF');
+      }
+
+      // 각 테이블 삭제
+      for (const table of tables) {
+        try {
+          await this.db.exec(`DROP TABLE IF EXISTS "${table}"`);
+          results[table] = true;
+          console.log(`SQLite 테이블 삭제 성공: ${table}`);
+        } catch (err) {
+          console.error(`SQLite 테이블 삭제 실패: ${table}`, err);
+          results[table] = false;
+        }
+      }
+
+      // 외래 키 제약 조건 원래대로 복원
+      if (foreignKeysEnabled) {
+        await this.db.exec('PRAGMA foreign_keys = ON');
+      }
+
+      return results;
+    } catch (error) {
+      console.error('SQLite 테이블 삭제 중 오류:', error);
+      throw error;
     }
   }
 
