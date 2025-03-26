@@ -37,79 +37,144 @@ export class PostgresSchemaManager {
 
   async extractSchema(tableName: string): Promise<TableSchema[]> {
     try {
-      const result = await this.pool.query(
+      // WITH 구문 대신 개별 쿼리로 분리하여 regclass 타입 변환 오류 방지
+      // 컬럼 기본 정보 조회
+      const columnsResult = await this.pool.query(
         `
-        WITH
-        pks AS (
-          SELECT a.attname
-          FROM pg_index i
-          JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
-          WHERE i.indrelid = $1::regclass AND i.indisprimary
-        ),
-        fks AS (
-          SELECT
-            kcu.column_name,
-            ccu.table_name AS foreign_table,
-            ccu.column_name AS foreign_column
-          FROM information_schema.table_constraints AS tc
-          JOIN information_schema.key_column_usage AS kcu ON tc.constraint_name = kcu.constraint_name
-          JOIN information_schema.constraint_column_usage AS ccu ON ccu.constraint_name = tc.constraint_name
-          WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = $1
-        ),
-        uks AS (
-          SELECT ic.column_name
-          FROM information_schema.table_constraints tc
-          JOIN information_schema.constraint_column_usage AS ic ON tc.constraint_name = ic.constraint_name
-          WHERE tc.constraint_type = 'UNIQUE' AND tc.table_name = $1
-        )
-        SELECT
+        SELECT 
           c.column_name,
           c.data_type,
           c.character_maximum_length AS length,
-          c.numeric_precision AS "precision",
+          c.numeric_precision AS precision,
           c.numeric_scale AS scale,
-          CASE WHEN c.is_nullable = 'YES' THEN true ELSE false END AS is_nullable,
-          CASE WHEN pk.attname IS NOT NULL THEN true ELSE false END AS is_primary,
-          CASE WHEN uk.column_name IS NOT NULL THEN true ELSE false END AS is_unique,
-          CASE WHEN fk.column_name IS NOT NULL THEN true ELSE false END AS is_foreign,
-          fk.foreign_table,
-          fk.foreign_column,
+          (c.is_nullable = 'YES') AS is_nullable,
           c.column_default AS default_value,
-          CASE 
-            WHEN c.column_default LIKE '%nextval%' THEN true 
-            WHEN c.column_default LIKE '%identity%' THEN true
-            ELSE false 
-          END AS auto_increment,
-          pgd.description
+          c.ordinal_position
         FROM information_schema.columns c
-        LEFT JOIN pks pk ON pk.attname = c.column_name
-        LEFT JOIN fks fk ON fk.column_name = c.column_name
-        LEFT JOIN uks uk ON uk.column_name = c.column_name
-        LEFT JOIN pg_catalog.pg_statio_all_tables AS st ON st.relname = c.table_name
-        LEFT JOIN pg_catalog.pg_description pgd ON pgd.objoid = st.relid
-          AND pgd.objsubid = c.ordinal_position
-        WHERE c.table_name = $1
+        WHERE c.table_schema = 'public'
+          AND c.table_name = $1
+        ORDER BY c.ordinal_position
       `,
         [tableName]
       );
 
-      return result.rows.map((row) => ({
-        table_name: tableName,
-        column_name: row.column_name,
-        data_type: row.data_type,
-        length: row.length || undefined,
-        precision: row.precision || undefined,
-        scale: row.scale || undefined,
-        is_nullable: row.is_nullable,
-        is_primary: row.is_primary,
-        is_unique: row.is_unique,
-        is_foreign: row.is_foreign,
-        foreign_table: row.foreign_table || undefined,
-        foreign_column: row.foreign_column || undefined,
-        default_value: row.default_value || undefined,
-        auto_increment: row.auto_increment,
-        description: row.description || '',
-      }));
+      // 기본 키 정보 조회
+      const primaryKeysResult = await this.pool.query(
+        `
+        SELECT
+          kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.constraint_type = 'PRIMARY KEY'
+          AND tc.table_schema = 'public'
+          AND tc.table_name = $1
+      `,
+        [tableName]
+      );
+
+      // 유니크 키 정보 조회
+      const uniqueKeysResult = await this.pool.query(
+        `
+        SELECT
+          kcu.column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        WHERE tc.constraint_type = 'UNIQUE'
+          AND tc.table_schema = 'public'
+          AND tc.table_name = $1
+      `,
+        [tableName]
+      );
+
+      // 외래 키 정보 조회
+      const foreignKeysResult = await this.pool.query(
+        `
+        SELECT
+          kcu.column_name,
+          ccu.table_name AS foreign_table,
+          ccu.column_name AS foreign_column
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+        JOIN information_schema.constraint_column_usage ccu
+          ON ccu.constraint_name = tc.constraint_name
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND tc.table_schema = 'public'
+          AND tc.table_name = $1
+      `,
+        [tableName]
+      );
+
+      // 자동 증가 컬럼 조회 (nextval 또는 identity 방식 모두 처리)
+      const autoIncrementResult = await this.pool.query(
+        `
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = $1
+          AND (column_default LIKE 'nextval%' OR column_default LIKE '%identity%')
+      `,
+        [tableName]
+      );
+
+      // 열 설명(코멘트) 조회 (regclass를 사용하지 않는 안전한 방식)
+      const commentsResult = await this.pool
+        .query(
+          `
+        SELECT
+          a.attname AS column_name,
+          d.description
+        FROM pg_catalog.pg_attribute a
+        LEFT JOIN pg_catalog.pg_description d
+          ON d.objoid = a.attrelid AND d.objsubid = a.attnum
+        JOIN pg_catalog.pg_class c
+          ON c.oid = a.attrelid
+        JOIN pg_catalog.pg_namespace n
+          ON n.oid = c.relnamespace
+        WHERE n.nspname = 'public'
+          AND c.relname = $1
+          AND a.attnum > 0
+          AND NOT a.attisdropped
+      `,
+          [tableName]
+        )
+        .catch(() => ({ rows: [] })); // 오류시 빈 배열 반환
+
+      // 각 필드 매핑을 위한 데이터 준비
+      const primaryKeys = primaryKeysResult.rows.map((row) => row.column_name);
+      const uniqueKeys = uniqueKeysResult.rows.map((row) => row.column_name);
+      const foreignKeys = foreignKeysResult.rows;
+      const autoIncrementColumns = autoIncrementResult.rows.map((row) => row.column_name);
+      const comments = commentsResult.rows;
+
+      // 최종 스키마 생성
+      return columnsResult.rows.map((column) => {
+        // 현재 컬럼과 관련된 외래 키 찾기
+        const fk = foreignKeys.find((fk) => fk.column_name === column.column_name);
+
+        // 현재 컬럼에 대한 코멘트 찾기
+        const commentObj = comments.find((c) => c.column_name === column.column_name);
+
+        return this.mapColumnToSchema({
+          table_name: tableName,
+          column_name: column.column_name,
+          data_type: column.data_type,
+          length: column.length,
+          precision: column.precision,
+          scale: column.scale,
+          is_nullable: column.is_nullable,
+          is_primary: primaryKeys.includes(column.column_name),
+          is_unique: uniqueKeys.includes(column.column_name) || primaryKeys.includes(column.column_name),
+          is_foreign: !!fk,
+          foreign_table: fk ? fk.foreign_table : undefined,
+          foreign_column: fk ? fk.foreign_column : undefined,
+          default_value: column.default_value,
+          auto_increment: autoIncrementColumns.includes(column.column_name),
+          description: commentObj?.description || '',
+        });
+      });
     } catch (error) {
       console.error('PostgreSQL 스키마 추출 중 오류:', error);
       return [];
