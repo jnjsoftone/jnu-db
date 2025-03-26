@@ -1,6 +1,6 @@
 {
   "name": "jnu-db",
-  "version": "0.0.5",
+  "version": "0.0.6",
   "description": "Jnjsoft Nodejs Utility Library for Database(sqlite, pocketbase, mysql, supabase, ...) Support Functions in Typescript",
   "author": "JnJ One <jnjsoft.one@gmail.com>",
   "main": "./cjs/index.js",
